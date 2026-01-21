@@ -1,4 +1,4 @@
-#include "ws_core.hpp"
+#include "../Core/ws_core.hpp"
 #include <string>
 
 class HelloWorld {
