@@ -9,7 +9,7 @@ namespace py = pybind11;
 
 PYBIND11_MODULE(helloworld, m) {
     py::class_<HelloWorld>(m, "HelloWorld")
-        .def(py::init<>())
+        .def(py::init<const std::string&>())
         .def("greet", &HelloWorld::greet)
     ;
 }

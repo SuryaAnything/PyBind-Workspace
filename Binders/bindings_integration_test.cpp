@@ -9,11 +9,12 @@ namespace py = pybind11;
 
 PYBIND11_MODULE(integration_test, m) {
     py::class_<BaseSystem>(m, "BaseSystem")
-        .def(py::init<>())
+        .def(py::init<int>())
         .def("reset", &BaseSystem::reset)
     ;
     py::class_<ComputeNode, BaseSystem>(m, "ComputeNode")
         .def(py::init<>())
+        .def(py::init<const std::vector<float>&>())
         .def("process", py::overload_cast<float>(&ComputeNode::process))
         .def("process", py::overload_cast<float, int>(&ComputeNode::process))
         .def("__add__", &ComputeNode::operator+)

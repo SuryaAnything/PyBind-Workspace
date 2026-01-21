@@ -2,9 +2,7 @@
 #include <regex>
 #include <sstream>
 #include <unordered_set>
-#include <iostream>
 
-// Helper to map "operator+" to "__add__"
 std::string get_operator_python_name(const std::string& cpp_name) {
     if (cpp_name == "operator+") return "__add__";
     if (cpp_name == "operator-") return "__sub__";
@@ -14,11 +12,9 @@ std::string get_operator_python_name(const std::string& cpp_name) {
     if (cpp_name == "operator-=") return "__isub__";
     if (cpp_name == "operator==") return "__eq__";
     if (cpp_name == "operator!=") return "__ne__";
-    // Add others as needed
     return ""; 
 }
 
-// (Keep ParseArgs exactly as before)
 std::vector<std::string> Parser::ParseArgs(const std::string& raw_args) {
     std::vector<std::string> args;
     std::string current;
@@ -59,7 +55,6 @@ std::vector<std::string> Parser::ParseArgs(const std::string& raw_args) {
 }
 
 ClassInfo Parser::ParseClass(const std::string& content, const std::string& class_name, const std::string& file_name) {
-    // ... (Steps 1, 2, 3 remain the same) ...
     ClassInfo info; info.name = class_name; info.source_file = file_name;
 
     std::regex class_re("class\\s+" + class_name + "\\s*(:\\s*public\\s+([\\w_]+))?\\s*\\{");
@@ -83,31 +78,29 @@ ClassInfo Parser::ParseClass(const std::string& content, const std::string& clas
         if (body.substr(j).rfind("protected:", 0) == 0) { is_public = false; j+=9; continue; }
         if (is_public) public_code += body[j];
     }
-    
-    std::regex init_list_re(R"(\)\s*:[^{;]*\{)");
-    public_code = std::regex_replace(public_code, init_list_re, "){");
-    
-    // --- 4. Scan Constructors (FIXED) ---
-    // Added capture group (=.*)? to detect "= delete"
-    // Also allows ending with ; (which Sanitizer now ensures)
+
+    // [CRITICAL FIX] 
+    // Accept BOTH '{' and ';' as terminators for initializer lists.
+    // The Sanitizer turns '{' into ';' for inline constructors, so we must support it.
+    std::regex init_list_re(R"(\)\s*:[^{;]*[;\{])"); 
+    public_code = std::regex_replace(public_code, init_list_re, ");");
+
+    // Scan Constructors
+    // Also matches ending with ; or {
     std::regex ctor_re(R"(\b(explicit\s+)?)" + class_name + R"(\s*\(([^)]*)\)\s*(=.*)?\s*[\{;])");
-    
     auto c_start = std::sregex_iterator(public_code.begin(), public_code.end(), ctor_re);
     for (auto it = c_start; it != std::sregex_iterator(); ++it) {
         std::smatch m = *it;
-        std::string suffix = m[3]; // Capture "= delete"
-        
-        if (suffix.find("delete") != std::string::npos) continue; // SKIP deleted
+        std::string suffix = m[3]; 
+        if (suffix.find("delete") != std::string::npos) continue;
 
         MethodInfo ctor; ctor.name = class_name; ctor.is_constructor = true; ctor.is_static = false; ctor.is_const = false;
         ctor.args = ParseArgs(m[2]);
         info.methods.push_back(ctor);
     }
 
-    // --- 5. Scan Methods (FIXED) ---
-    // Now expects ; OR { (though Sanitizer usually provides ;)
+    // Scan Methods
     std::regex m_re(R"(\s*(static\s+)?([a-zA-Z0-9_<>*&]+)\s+([\w_+=\-*/!]+)\s*\(([^)]*)\)\s*(const)?\s*(=.*)?\s*[;\{])");
-    
     auto m_start = std::sregex_iterator(public_code.begin(), public_code.end(), m_re);
     for (auto it = m_start; it != std::sregex_iterator(); ++it) {
         std::smatch m = *it;
@@ -124,15 +117,8 @@ ClassInfo Parser::ParseClass(const std::string& content, const std::string& clas
         method.is_constructor = false;
         method.is_const = m[5].matched;
         method.args = ParseArgs(m[4]);
+        method.operator_name = get_operator_python_name(name);
         
-        // Map operators
-        if (name == "operator+") method.operator_name = "__add__";
-        else if (name == "operator-") method.operator_name = "__sub__";
-        else if (name == "operator*") method.operator_name = "__mul__";
-        else if (name == "operator/") method.operator_name = "__truediv__";
-        else if (name == "operator+=") method.operator_name = "__iadd__";
-        else method.operator_name = "";
-
         info.methods.push_back(method);
     }
     return info;
